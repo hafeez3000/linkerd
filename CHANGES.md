@@ -1,6 +1,7 @@
 ## 0.x.y
 
 * Removed unused TLS options from the k8s storage plugin config
+* Support serving the namerd namer interface over TLS.
 
 ## 0.8.1
 
