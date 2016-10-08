@@ -15,6 +15,40 @@ object RoutingFactory {
    * destination]] for `Req`-typed requests.
    */
   type Identifier[Req] = Req => Future[RequestIdentification[Req]]
+  object Identifier {
+    private def fail[Req]: Future[RequestIdentification[Req]] =
+      Future.value(new UnidentifiedRequest("Unable to identify request"))
+
+    /**
+     * Apply each identifier in order until the request is identified.
+     */
+    def compose[Req](all: Seq[Identifier[Req]]): Identifier[Req] = all match {
+      case Nil =>
+        lazy val failed = fail[Req]
+        (_: Req) => failed
+      case Seq(identifier) => identifier
+      case all => new Composed(all)
+    }
+
+    def compose[Req](hd: Identifier[Req], tl: Identifier[Req]*): Identifier[Req] =
+      compose(hd +: tl)
+
+    private[this] class Composed[Req](all: Seq[Identifier[Req]]) extends Identifier[Req] {
+      def apply(req: Req): Future[RequestIdentification[Req]] = {
+        def iter(all: Seq[Identifier[Req]]): Future[RequestIdentification[Req]] =
+          all match {
+            case Seq(hd) => hd(req)
+            case Seq(hd, tl@_*) =>
+              hd(req).flatMap {
+                case id: IdentifiedRequest[Req] => Future.value(id)
+                case _: UnidentifiedRequest[Req] => iter(tl)
+              }
+            case Nil => fail[Req] // unreachable, tho!
+          }
+        iter(all)
+      }
+    }
+  }
 
   /** The result of attempting to identify a request. */
   sealed trait RequestIdentification[Req]
