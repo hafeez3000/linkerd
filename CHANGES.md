@@ -2,6 +2,7 @@
 
 * Consul namer can use `.local` to reference local agent's datacenter
 * Removed unused TLS options from the k8s storage plugin config
+* Add k8s-external namer for routing to k8s ingress services
 
 ## 0.8.1
 
