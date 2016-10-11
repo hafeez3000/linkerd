@@ -15,39 +15,41 @@ object RoutingFactory {
    * destination]] for `Req`-typed requests.
    */
   type Identifier[Req] = Req => Future[RequestIdentification[Req]]
-  object Identifier {
-    private def fail[Req]: Future[RequestIdentification[Req]] =
-      Future.value(new UnidentifiedRequest("Unable to identify request"))
 
-    /**
-     * Apply each identifier in order until the request is identified.
-     */
-    def compose[Req](all: Seq[Identifier[Req]]): Identifier[Req] = all match {
-      case Nil =>
-        lazy val failed = fail[Req]
-        (_: Req) => failed
-      case Seq(identifier) => identifier
-      case all => new Composed(all)
-    }
+  object Identifier {
 
     def compose[Req](hd: Identifier[Req], tl: Identifier[Req]*): Identifier[Req] =
       compose(hd +: tl)
 
-    private[this] class Composed[Req](all: Seq[Identifier[Req]]) extends Identifier[Req] {
-      def apply(req: Req): Future[RequestIdentification[Req]] = {
-        def iter(all: Seq[Identifier[Req]]): Future[RequestIdentification[Req]] =
-          all match {
-            case Seq(hd) => hd(req)
-            case Seq(hd, tl@_*) =>
-              hd(req).flatMap {
-                case id: IdentifiedRequest[Req] => Future.value(id)
-                case _: UnidentifiedRequest[Req] => iter(tl)
-              }
-            case Nil => fail[Req] // unreachable, tho!
-          }
-        iter(all)
-      }
+    /**
+     * Apply each identifier in order until the request is identified.
+     *
+     * Identifier list must not be empty.
+     */
+    def compose[Req](all: Seq[Identifier[Req]]): Identifier[Req] = all match {
+      case Nil => throw new IllegalArgumentException("empty identifier list")
+      case Seq(identifier) => identifier
+      case Seq(hd, tl@_*) => (req: Req) => fold(req, hd, tl)
     }
+
+    /**
+     * Apply each identifier to the request in order until the request
+     * is identified or identifiers are exhausted.
+     */
+    private[this] def fold[Req](
+      req: Req,
+      hd: Identifier[Req],
+      tl: Seq[Identifier[Req]]
+    ): Future[RequestIdentification[Req]] =
+      tl match {
+        case Nil => hd(req)
+        case Seq(nextHd, nextTl@_*) =>
+          hd(req).flatMap {
+            case id: IdentifiedRequest[Req] => Future.value(id)
+            case _: UnidentifiedRequest[Req] => fold(req, nextHd, nextTl)
+          }
+      }
+
   }
 
   /** The result of attempting to identify a request. */
